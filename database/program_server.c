@@ -200,25 +200,150 @@ int loadFromFile(struct Table *ta, char *file) {
             isHeader = 0;
         } else {
 			struct Row *r = initRow();
-			printf("Parsing row %d to %d\n", ta->rowCount, r);
             parseRow(ta, r, split);
-            // printf("%d\n", *((int*) r->columns[0]->value));
-			printf("Pushing row %d with values:\n", ta->rowCount);
 			printRow(r);
             ta->row[ta->rowCount] = r;
             ta->rowCount++;
         }
         split = strtok_r(NULL, delim, &endToken);
     }
-    for(int i=0;i<ta->columnCount;i++) {
-        printf("Header %d %s %d\n", i, ta->header[i]->name, ta->header[i]->type);
-    }
     void *ptr = ta->row[0]->columns[0];
-    printf("Column count %d\n", ta->columnCount);
-    printf("Row count %d\n", ta->rowCount);
-    printf("%d\n", ptr);
 }
 
+void handleQuery(char *query) {
+	
+}
+
+void insertRow(struct Table *t, char *query) {
+	struct Row *r = initRow();
+	int startParse = 0;
+	int newData = 0;
+	int parseString = 0;
+	char *temp = malloc(sizeof(char*)*strlen(query));
+	for(int i=0; i<strlen(query); i++) {
+		if(query[i] == '(') {
+			startParse = 1;
+			newData = 1;
+			continue;
+		}
+
+		// parse
+		if(startParse == 1) {
+			if(newData == 1) {
+				if(query[i] == '\'') {
+					newData = 0;
+					parseString = 1;
+				} else {
+					newData = 0;
+					parseString = 0;
+					sprintf(temp, "%s%c", temp, query[i]);
+				}
+			} else {
+				// integer stop when met ,
+				// string stop when met '
+				if(parseString == 0) {
+					//its integer bro
+					if(query[i] == ',') {
+						newData = 1;
+						int *intPtr = malloc(2*sizeof(int));
+						*intPtr = atoi(temp);
+						void *ptrVoid = intPtr;
+						pushColumn(r, ptrVoid);
+						temp[0] = '\0';
+						continue;
+					}
+				} else {
+					//its string
+					if(query[i] == '\'') {
+						i++;
+						newData = 1;
+						pushColumn(r, strdup(temp));
+						temp[0] = '\0';
+					}
+				}
+
+				sprintf(temp, "%s%c", temp, query[i]);
+			}
+			if(query[i] == ')') {
+				break;
+			}
+		}
+	}
+	t->row[t->rowCount] = r;
+	t->rowCount++;
+}
+
+void updateSingleRow(struct Row *r, int type, int columnNumber, char *stringVal, int intVal) {
+	if(type == 0) {
+		int *intPtr = malloc(sizeof(int));
+		*intPtr = intVal;
+		printf("%d\n", *intPtr);
+		void *voidPtr = intPtr;
+		r->columns[columnNumber] = voidPtr; 
+	} else {
+		r->columns[columnNumber] = stringVal; 
+	}
+}
+
+void updateRow(struct Table *t, char *query) {
+	char *columnName = malloc(sizeof(char*)*strlen(query));
+	char *splitTemp = malloc(sizeof(char*)*strlen(query));
+	char *value = malloc(sizeof(char*)*strlen(query));
+	int setter = 0;
+	int columnParse = 0;
+	for(int i=0; i<strlen(query); i++) {
+		if(strcmp(splitTemp, "SET") == 0) {
+			setter = 1;
+			columnParse = 1;
+		}
+		if(query[i] == ' ') {
+			splitTemp[0] = '\0';
+			continue;
+		}
+		if(setter == 1) {
+			if(query[i] == '=') {
+				columnParse = 0;
+				continue;
+			}
+			if(columnParse == 1) {
+				sprintf(columnName, "%s%c", columnName, query[i]);
+			} else {
+				if(query[i] == '\'') continue;
+				sprintf(value, "%s%c", value, query[i]);
+			}
+		}
+		sprintf(splitTemp, "%s%c", splitTemp, query[i]);
+	}
+	int type = -1;
+	int columnNumber = -1;
+	for(int i=0;i<t->columnCount;i++) {
+		struct TableHeader *h = t->header[i];
+		if(strcmp(h->name, columnName) == 0) {
+			columnNumber = i;
+			type = h->type;
+			break;
+		}
+	}
+
+	for(int i=0; i<t->rowCount; i++) {
+		struct Row *r = t->row[i];
+		if(type == 0) {
+			// update int
+			updateSingleRow(r, type, columnNumber, "", atoi(value));
+		} else {
+			// update string
+			updateSingleRow(r, type, columnNumber, (value), 0);
+		}
+	}
+}
+
+void selectTable(struct Table *t, char *query) {
+	
+}
+void clearTable(struct Table *t) {
+	t->rowCount = 0;
+	t->row = malloc(sizeof(struct Row*));
+}
 struct DatabaseServer {
 
 };
@@ -262,9 +387,13 @@ int main(int argc , char *argv[])
 {
 	struct Table myTable = {};
     char buffer[100];
-    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n1;3;Aji;");
+    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
     loadFromFile(&myTable, buffer);
 	printTable(&myTable);
+	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+	updateRow(&myTable, "UPDATE table1 SET name='Agung'");
+	clearTable(&myTable);
+	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
 	tableToString(&myTable);
 
 	return 0;
