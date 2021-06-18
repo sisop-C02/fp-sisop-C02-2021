@@ -27,17 +27,16 @@ int main(int argc , char *argv[])
 	bool isRootUser = false;
 	// Jika akses root
 	if (geteuid() == 0) {
-		printf("Welcome, root user.Type EXIT to exit this program.\n");
+		printf("Welcome, root user.\nType EXIT to exit this program.\n\n");
 		isRootUser = true;
 		send(sock , "sudo" , strlen("sudo") , 0);
-	} else {
+	} else if (argc > 1 && !isRootUser) {
 		// Combining credentials
-		if (argc > 1 && !isRootUser) {
-			strcpy(credentials,"l");
-			strcat(credentials, argv[2]);
-			strcat(credentials, ":");
-			strcat(credentials, argv[4]);
-		}
+		strcpy(credentials,"l");
+		strcat(credentials, argv[2]);
+		strcat(credentials, ":");
+		strcat(credentials, argv[4]);
+		
 		// Mengirim info user ke server
 		puts("Sending credentials to server...");
 		send(sock , credentials , strlen(credentials) , 0);
@@ -45,13 +44,17 @@ int main(int argc , char *argv[])
 		char creds_check[1000] = {0};
 		recv(sock , creds_check , sizeof(creds_check) , 0);
 		// Jika login gagal
-		if (!strcmp(creds_check, "login_fail")) {
+		if (!strcmp(creds_check, "login_failed")) {
 			puts("Invalid credentials\nExiting...");
 			exit_program();
 			return 0;
 		} else {
 			printf("Welcome, %s.\nType EXIT to exit this program.\n\n", argv[2]);
 		}
+	} else {
+		puts("No credentials entered.\n");
+		exit_program();
+		return 0;
 	}
 
 	while(true) {
@@ -67,7 +70,6 @@ int main(int argc , char *argv[])
 		free(user_msg);
 	}
 
-	close(sock);
 	return 0;
 }
 
@@ -139,6 +141,7 @@ void start_query(char* user_query, bool isRootUser) {
 			memset(credentials, 0, sizeof(credentials));
 			strcpy(credentials, "r"); strcat(credentials, newString[2]);
 			strcat(credentials, ":"); strcat(credentials, newString[5]);
+			credentials[strlen(credentials)-1] = '\0';
 			send(sock , credentials , strlen(credentials) , 0);
 			// Menerima balasan server
 			char msg[1000] = {0};
@@ -158,6 +161,7 @@ void start_query(char* user_query, bool isRootUser) {
 			memset(permit, 0, sizeof(permit));
 			strcpy(permit, "p"); strcat(permit, newString[2]);
 			strcat(permit, ":"); strcat(permit, newString[4]);
+			permit[strlen(permit)-1] = '\0';
 			send(sock , permit , strlen(permit) , 0);
 			// Menerima balasan server
 			char msg[1000] = {0};
