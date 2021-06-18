@@ -351,7 +351,6 @@ struct DatabaseServer {
 
 
 
-
 // structures
 typedef struct client {
 	char username[50];
@@ -369,13 +368,13 @@ void *connection_handler(void *);
 //user id functions
 bool login(char*, int); 
 void get_client(char*);
-bool regis(char*, int);
 bool isExistUser(char*);
 bool isExistDB(char*);
 
 //query functions
 void process_query(int, char*);
-void permit(char*, int);
+void regis(char*, int, char*, int);
+void permit(char*, int, char*, int);
 
 //global variables
 bool isOccupied;
@@ -384,20 +383,39 @@ char listofperms[100][50];
 client curr_client;
 
 
+static void write_log(char cmd[])
+{
+    char message[1000];
+
+    time_t t_o = time(NULL);
+    struct tm tm_s = * localtime(&t_o);
+    sprintf(message, "%d-%02d-%02d %02d:%02d:%02d:%s:%s", 
+    tm_s.tm_year + 1900, tm_s.tm_mon + 1, tm_s.tm_mday,
+    tm_s.tm_hour, tm_s.tm_min, tm_s.tm_sec, curr_client.username, cmd);
+
+    char * file_name = "database.log";
+    FILE * log_file;
+    log_file = fopen(file_name, "a");
+    fprintf(log_file, "%s\n", message);
+
+    fclose(log_file);
+}
+
+
 int main(int argc , char *argv[])
 {
-	struct Table myTable = {};
-    char buffer[100];
-    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
-    loadFromFile(&myTable, buffer);
-	printTable(&myTable);
-	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
-	updateRow(&myTable, "UPDATE table1 SET name='Agung'");
-	clearTable(&myTable);
-	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
-	tableToString(&myTable);
+	// struct Table myTable = {};
+ //    char buffer[100];
+ //    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
+ //    loadFromFile(&myTable, buffer);
+	// printTable(&myTable);
+	// insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+	// updateRow(&myTable, "UPDATE table1 SET name='Agung'");
+	// clearTable(&myTable);
+	// insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+	// tableToString(&myTable);
 
-	return 0;
+	// return 0;
 	int socket_desc , client_sock , c , *new_sock;
 	struct sockaddr_in server , client;
 	
@@ -493,8 +511,8 @@ void *connection_handler(void *socket_desc)
 
 		if (credentials[0] == 's') {
 			status = true;
-			strcpy(curr_client.username, "sudo");
-			strcpy(curr_client.password, "sudo");
+			strcpy(curr_client.username, "root");
+			strcpy(curr_client.password, "root");
 		} else if (credentials[0] == 'l'){
 			status = login(credentials, sock);
 		}
@@ -582,10 +600,11 @@ void get_client(char credentials[]) {
 		curr_client.password[i-colon_idx-1] = credentials[i];
 }
 
-bool regis(char credentials[], int sock) {
+void regis(char credentials[], int sock, char* cmd_reg, int buffersize) {
 	// Menghapus indikator 'r' dan parse username
 	char usr_name[50]; memset(usr_name,0,sizeof(usr_name));
 	int colon_idx = 0;
+    char pass[50]; memset(pass,0,sizeof(pass));
 	char cleancreds[50]; memset(cleancreds,0,sizeof(cleancreds));
 	for (int i = 1; i < strlen(credentials); ++i) {
 		cleancreds[i-1] = credentials[i];
@@ -594,6 +613,11 @@ bool regis(char credentials[], int sock) {
 	}
 	for (int i = 0; i < colon_idx; ++i)
 		usr_name[i] = cleancreds[i];
+    int rep = 0;
+    for (int i = colon_idx + 1; i < strlen(cleancreds); ++i) {
+        pass[rep] = cleancreds[i];
+        rep++;
+    }
 
 	bool userexist = isExistUser(usr_name);
 
@@ -601,7 +625,8 @@ bool regis(char credentials[], int sock) {
 		char *msg_gagal = "regis_failed";
 	    send(sock , msg_gagal , strlen(msg_gagal), 0);
 	    puts("[invalid regis]");
-	    return false;
+        *cmd_reg = '\0';
+	    return;
 	} else {
 		FILE *fptr;
 	    fptr = fopen("akun.txt", "a+");
@@ -610,11 +635,15 @@ bool regis(char credentials[], int sock) {
 	    char *msg_success = "regis_success";
 	    send(sock , msg_success , strlen(msg_success), 0);
 	    puts("[user registered]");
-    	return true;
+
+        char tempcmd[500] = {0};
+        sprintf(tempcmd, "CREATE USER %s IDENTIFIED BY %s", usr_name, pass);
+        strncpy(cmd_reg, tempcmd, buffersize - 1);
+    	return;
 	}
 }
 
-void permit(char* permis, int sock) {
+void permit(char* permis, int sock, char* cmd_per, int buffersize) {
 	// menghapus huruf p
 	char usr_name[50] = {0}, db_name[50] = {0}; 
 	int colon_idx = 0;
@@ -639,6 +668,7 @@ void permit(char* permis, int sock) {
 	if (!userexist) {
 		char *msg_gagal = "user_unavailable";
 	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+        *cmd_per = '\0';
 	    return;
 	}
 
@@ -646,6 +676,7 @@ void permit(char* permis, int sock) {
 	if (!userexist) {
 		char *msg_gagal = "database_unavailable";
 	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+        *cmd_per = '\0';
 	    return;
 	}
 
@@ -660,6 +691,7 @@ void permit(char* permis, int sock) {
     		fclose(fptr);
     		char *msg_gagal = "multiple_permissions";
     		send(sock , msg_gagal , strlen(msg_gagal), 0);
+            *cmd_per = '\0';
     		return;
     	}
     }
@@ -668,6 +700,11 @@ void permit(char* permis, int sock) {
     fclose(fptr);
     char *msg_success = "permission_success";
     send(sock , msg_success , strlen(msg_success), 0);
+
+    char tempcmd[500] = {0};
+    sprintf(tempcmd, "GRANT PERMISSION %s INTO %s", db_name, usr_name);
+    strncpy(cmd_per, tempcmd, buffersize - 1);
+    return;
 }
 
 
@@ -697,22 +734,24 @@ bool isExistDB(char* db_name) {
 
 void process_query(int sock, char* user_query) {
 	//Query
-	// struct Table myTable = {};
- //    char buffer[100];
- //    strcpy(buffer, "idi;ages;names;\n1;3213;\n1;3213;");
- //    loadFromFile(&myTable, buffer);
-	if (user_query[0]=='r')
+	char cmd[500]; memset(cmd, 0, sizeof(cmd));
+    if (user_query[0]=='r')
 	{
-		regis(user_query, sock);
+		regis(user_query, sock, cmd, sizeof(cmd));
 	}
 	else if (user_query[0]=='p')
  	{
-		permit(user_query, sock);
+		permit(user_query, sock, cmd, sizeof(cmd));
 	}
 	else {
 		printf("%s\n", user_query);
 		char *msg_success = "query accepted\n";
     	send(sock , msg_success , strlen(msg_success), 0);
+        strcpy(cmd, user_query);
 	}
+    if (cmd[0] == '\0') {
+        strcat(cmd, "failed operation");
+    }
+    write_log(cmd);
 	return;
 }

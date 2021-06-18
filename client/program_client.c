@@ -129,6 +129,7 @@ void split_string(char* str1) {
 }
 
 void start_query(char* user_query, bool isRootUser) {
+	user_query[strlen(user_query)-1] = '\0';
 	if (isRootUser) {
 		if (strstr(user_query, "CREATE USER")!=NULL)
 		{
@@ -141,12 +142,11 @@ void start_query(char* user_query, bool isRootUser) {
 			memset(credentials, 0, sizeof(credentials));
 			strcpy(credentials, "r"); strcat(credentials, newString[2]);
 			strcat(credentials, ":"); strcat(credentials, newString[5]);
-			credentials[strlen(credentials)-1] = '\0';
 			send(sock , credentials , strlen(credentials) , 0);
 			// Menerima balasan server
 			char msg[1000] = {0};
 			recv(sock , msg , sizeof(msg) , 0);
-			printf("%s\n", msg);
+			printf("%s\n\n", msg);
 			return;
 		}
 		else if (strstr(user_query, "GRANT PERMISSION")!=NULL) 
@@ -161,12 +161,11 @@ void start_query(char* user_query, bool isRootUser) {
 			memset(permit, 0, sizeof(permit));
 			strcpy(permit, "p"); strcat(permit, newString[2]);
 			strcat(permit, ":"); strcat(permit, newString[4]);
-			permit[strlen(permit)-1] = '\0';
 			send(sock , permit , strlen(permit) , 0);
 			// Menerima balasan server
 			char msg[1000] = {0};
 			recv(sock , msg , sizeof(msg) , 0);
-			printf("%s\n", msg);
+			printf("%s\n\n", msg);
 			return;
 		}
 	}
