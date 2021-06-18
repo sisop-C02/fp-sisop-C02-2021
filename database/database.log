@@ -1,8 +1,0 @@
-2021-06-18 20:47:05:root:CREATE USER jalil IDENTIFIED BY jali
-2021-06-18 20:48:11:root:failed operation
-2021-06-18 20:48:26:root:failed operation
-2021-06-18 20:50:02:root:CREATE TABLE kolil(jali int, kolil string)
-2021-06-18 21:04:43:root:CREATE
-2021-06-18 21:08:23:root:CREATE
-2021-06-18 21:09:37:root:GRANT PERMISSION jalil INTO jali
-2021-06-18 21:13:40:root:failed operation

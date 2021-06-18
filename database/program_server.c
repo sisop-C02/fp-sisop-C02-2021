@@ -367,6 +367,7 @@ struct DatabaseServer {
 typedef struct client {
   char username[50];
   char password[50];
+  char database[50];
 } client;
 
 typedef struct db_permit {
@@ -439,11 +440,11 @@ int main(int argc, char *argv[]) {
   //Prepare the sockaddr_in structure
   server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
-  server.sin_port = htons(8888);
+  server.sin_port = htons(1111);
 
   //Bind
   if (bind(socket_desc, (struct sockaddr *)&server, sizeof(server)) < 0) {
-    perror("bind failed. Error");
+    printf("bind failed. Error");
     return 1;
   }
   puts("Bind done");
@@ -462,7 +463,7 @@ int main(int argc, char *argv[]) {
     *new_sock = client_sock;
 
     if (pthread_create(&sniffer_thread, NULL, connection_handler, (void *)new_sock) < 0) {
-      perror("could not create thread");
+      printf("could not create thread");
       return 1;
     }
 
@@ -470,7 +471,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (client_sock < 0) {
-    perror("accept failed");
+    printf("accept failed");
     return 1;
   }
 
@@ -558,7 +559,7 @@ void *connection_handler(void *socket_desc)
     puts("Client disconnected\n");
     fflush(stdout);
   } else if (read_size == -1) {
-    perror("recv failed");
+    printf("recv failed");
   }
   close(sock);
   free(socket_desc);
@@ -758,7 +759,7 @@ bool isExistUser(char *usr_name) {
 bool isExistDB(char *db_name) {
 	char current_dir[NAME_MAX];
 	if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
-		perror("Tidak dapat mendapatkan path sekarang ini!");
+		printf("Tidak dapat mendapatkan path sekarang ini!");
 		return false;
 	}
 
@@ -783,13 +784,13 @@ void process_query(int sock, char *user_query) {
   } else if (user_query[0] == 'p') {
     permit(user_query, sock, cmd, sizeof(cmd));
   } else {
-    printf("%s\n", user_query);
+    printf("%s %s\n", curr_client.username, user_query);
 
 		char *sub_query = strtok(user_query, " ");
 
 		char current_dir[NAME_MAX];
 		if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
-			perror("Tidak dapat mendapatkan path sekarang ini!");
+			printf("Tidak dapat mendapatkan path sekarang ini!");
 			return;
 		}
 
@@ -805,17 +806,59 @@ void process_query(int sock, char *user_query) {
 						char path[PATH_MAX];
 						sprintf(path, "%s/%s", current_dir, database);
 
-						struct stat st = {0};
-						if (stat(path, &st) == -1) {
+						if (!isExistDB(database)) {
 							mkdir(path, 0777);
 						} else {
-							perror("Database sudah ada!");
+							printf("Database sudah ada!\n");
 							return;
 						}
-					} else if (!strcmp(sub_query, "USER")) {
+					} else if (!strcmp(sub_query, "TABLE")) {
+						sub_query = strtok(NULL, " ");
 
+						char table[NAME_MAX];
+						strcpy(table, sub_query);
+
+						char table_dir[PATH_MAX];
+						sprintf(table_dir, "%s/%s/%s", current_dir, curr_client.database, table);
+
+						FILE *table_file;
+						table_file = fopen(table_dir, "a");
+						if (table_file == NULL) {
+							perror("Tidak dapat membuat table!");
+							return;
+						}
+						
+						char columns[NAME_MAX];
+						strcpy(columns, &user_query[strlen("CREATE TABLE  (") + strlen(table)]);
+
+						char *column = strtok(columns, ",");
+						while (column != NULL) {
+							printf("%s\n", column);
+							char *col = strtok(column, " ");
+							while(col != NULL) {
+								printf("%s\n", col);
+								if (col != NULL) {
+									col = strtok(NULL, " ");
+								}
+							}
+							if (column != NULL) {
+								column = strtok(NULL, ",");
+							}
+						}
+
+						fclose(table_file);
 					}
 				}
+			} else if (!strcmp(sub_query, "USE")) {
+				char database[NAME_MAX];
+				strcpy(database, &user_query[strlen("USE ")]);
+
+				if (!isExistDB(database)) {
+					printf("Database tidak ada!\n");
+					return;
+				}
+
+				strcpy(curr_client.database, database);
 			}
 		}
 
