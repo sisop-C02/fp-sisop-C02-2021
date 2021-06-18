@@ -370,16 +370,17 @@ void *connection_handler(void *);
 bool login(char*, int); 
 void get_client(char*);
 bool regis(char*, int);
+bool isExistUser(char*);
+bool isExistDB(char*);
 
 //query functions
 void process_query(int, char*);
+void permit(char*, int);
 
 //global variables
 bool isOccupied;
 char listofcreds[100][50];
 char listofperms[100][50];
-char server_path[250] = "/home/jaglfr/Documents/SourceCodes/SisOp/fp/fp-sisop-C02-2021/database";
-char client_path[250] = "/home/jaglfr/Documents/SourceCodes/SisOp/fp/fp-sisop-C02-2021/client";
 client curr_client;
 
 
@@ -469,6 +470,7 @@ void *connection_handler(void *socket_desc)
 		// Client exits with "EXIT"
 		if (client_exit){
 			client_exit = false;
+			puts("[client exit]\n");
 			close(sock); free(socket_desc);
 			isOccupied = false;
 			return 0;
@@ -481,12 +483,18 @@ void *connection_handler(void *socket_desc)
 			if(client_message[0] == 'l' || client_message[0] == 's') {
 				strcpy(credentials, client_message);
 				incorrect = false;
+			} else if (!strcmp(client_message, "exit")) {
+				client_exit = true;
+				break;
 			}
 			memset(client_message,0,2000);
 		}
+		if (client_exit) continue;
 
 		if (credentials[0] == 's') {
 			status = true;
+			strcpy(curr_client.username, "sudo");
+			strcpy(curr_client.password, "sudo");
 		} else if (credentials[0] == 'l'){
 			status = login(credentials, sock);
 		}
@@ -495,6 +503,7 @@ void *connection_handler(void *socket_desc)
 		} 
 		else {
 			puts("[client logged in]");
+			printf("Current client -> %s:%s\n",curr_client.username, curr_client.password);
 			// Setelah login
 			while(true) 
 			{
@@ -551,6 +560,7 @@ bool login(char credentials[], int sock) {
     }
     char *msg_gagal = "login_failed";
     send(sock , msg_gagal , strlen(msg_gagal), 0);
+    puts("[invalid user]");
     return false;
 }
 
@@ -585,34 +595,59 @@ bool regis(char credentials[], int sock) {
 	for (int i = 0; i < colon_idx; ++i)
 		usr_name[i] = cleancreds[i];
 
-	int counter = 0;
-	FILE *fptr;
-    fptr = fopen("akun.txt", "a+");
-    while(fscanf(fptr, "%s\n", listofcreds[counter]) != EOF)
-    	counter++;
-    
-    // Cek apakah sudah ada username
-    for (int i = 0; i < counter; ++i) {
-    	if (strstr(listofcreds[i], usr_name) != NULL) {
-    		fclose(fptr);
-    		char *msg_gagal = "regis_failed";
-    		send(sock , msg_gagal , strlen(msg_gagal), 0);
-    		return false;
-    	}
-    }
+	bool userexist = isExistUser(usr_name);
 
-    fprintf(fptr, "%s\n", cleancreds);
-    fclose(fptr);
-    char *msg_success = "regis_success";
-    send(sock , msg_success , strlen(msg_success), 0);
-    return true;
+	if (userexist) {
+		char *msg_gagal = "regis_failed";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    puts("[invalid regis]");
+	    return false;
+	} else {
+		FILE *fptr;
+	    fptr = fopen("akun.txt", "a+");
+	    fprintf(fptr, "%s\n", cleancreds);
+	    fclose(fptr);
+	    char *msg_success = "regis_success";
+	    send(sock , msg_success , strlen(msg_success), 0);
+	    puts("[user registered]");
+    	return true;
+	}
 }
 
 void permit(char* permis, int sock) {
 	// menghapus huruf p
+	char usr_name[50] = {0}, db_name[50] = {0}; 
+	int colon_idx = 0;
 	char cleanper[50]; memset(cleanper,0,sizeof(cleanper));
-	for (int i = 1; i < strlen(permis); ++i)
+	for (int i = 1; i < strlen(permis); ++i){
 		cleanper[i-1] = permis[i];
+		if (permis[i] == ':')
+			colon_idx = i-1;
+	}
+
+	// parse user
+	int rep = 0;
+	for (int i = colon_idx+1; i < strlen(cleanper); ++i){
+		usr_name[rep] = cleanper[i];
+		rep++;
+	}
+	// parse database
+	for (int i = 0; i < colon_idx; ++i)
+		db_name[i] = cleanper[i];
+	
+	bool userexist = isExistUser(usr_name);
+	if (!userexist) {
+		char *msg_gagal = "user_unavailable";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    return;
+	}
+
+	bool DBexist = isExistDB(db_name);
+	if (!userexist) {
+		char *msg_gagal = "database_unavailable";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    return;
+	}
 
 	int counter = 0;
 	FILE *fptr;
@@ -623,7 +658,7 @@ void permit(char* permis, int sock) {
     for (int i = 0; i < counter; ++i) {
     	if (!strcmp(listofperms[i], cleanper)) {
     		fclose(fptr);
-    		char *msg_gagal = "permission_failed";
+    		char *msg_gagal = "multiple_permissions";
     		send(sock , msg_gagal , strlen(msg_gagal), 0);
     		return;
     	}
@@ -634,6 +669,31 @@ void permit(char* permis, int sock) {
     char *msg_success = "permission_success";
     send(sock , msg_success , strlen(msg_success), 0);
 }
+
+
+bool isExistUser(char* usr_name) {
+	int counter = 0;
+	FILE *fptr;
+    fptr = fopen("akun.txt", "a+");
+    while(fscanf(fptr, "%s\n", listofcreds[counter]) != EOF)
+    	counter++;
+    
+    // Cek apakah sudah ada username
+    for (int i = 0; i < counter; ++i) {
+    	if (strstr(listofcreds[i], usr_name) != NULL) {
+    		fclose(fptr);
+    		return true;
+    	}
+    }
+    fclose(fptr);
+    return false;
+}
+
+bool isExistDB(char* db_name) {
+	
+    return true;
+}
+
 
 void process_query(int sock, char* user_query) {
 	//Query
@@ -648,6 +708,11 @@ void process_query(int sock, char* user_query) {
 	else if (user_query[0]=='p')
  	{
 		permit(user_query, sock);
+	}
+	else {
+		printf("%s\n", user_query);
+		char *msg_success = "query accepted\n";
+    	send(sock , msg_success , strlen(msg_success), 0);
 	}
 	return;
 }
