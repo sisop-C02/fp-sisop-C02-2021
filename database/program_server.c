@@ -1,9 +1,10 @@
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -411,18 +412,19 @@ static void write_log(char cmd[]) {
 }
 
 int main(int argc, char *argv[]) {
-  struct Table myTable = {};
-  char buffer[100];
-  strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
-  loadFromFile(&myTable, buffer);
-  printTable(&myTable);
-  insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
-  updateRow(&myTable, "UPDATE table1 SET name='Agung'");
-  clearTable(&myTable);
-  insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
-  tableToString(&myTable);
+  // struct Table myTable = {};
+  // char buffer[100];
+  // strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
+	
+  // loadFromFile(&myTable, buffer);
+  // printTable(&myTable);
+  // insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+  // updateRow(&myTable, "UPDATE table1 SET name='Agung'");
+  // clearTable(&myTable);
+  // insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+  // tableToString(&myTable);
 
-  return 0;
+  // return 0;
 
   int socket_desc, client_sock, c, *new_sock;
   struct sockaddr_in server, client;
@@ -437,7 +439,7 @@ int main(int argc, char *argv[]) {
   //Prepare the sockaddr_in structure
   server.sin_family = AF_INET;
   server.sin_addr.s_addr = INADDR_ANY;
-  server.sin_port = htons(8888);
+  server.sin_port = htons(1234);
 
   //Bind
   if (bind(socket_desc, (struct sockaddr *)&server, sizeof(server)) < 0) {
@@ -754,7 +756,21 @@ bool isExistUser(char *usr_name) {
 }
 
 bool isExistDB(char *db_name) {
-  return true;
+	char current_dir[NAME_MAX];
+	if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
+		perror("Tidak dapat mendapatkan path sekarang ini!");
+		return false;
+	}
+
+	char path[PATH_MAX];
+	sprintf(path, "%s/%s", current_dir, db_name);
+
+	struct stat st = {0};
+	if (stat(path, &st) == -1) {
+		return false;
+	} else {
+  	return true;
+	}
 }
 
 void process_query(int sock, char *user_query) {
@@ -768,6 +784,41 @@ void process_query(int sock, char *user_query) {
     permit(user_query, sock, cmd, sizeof(cmd));
   } else {
     printf("%s\n", user_query);
+
+		char *sub_query = strtok(user_query, " ");
+
+		char current_dir[NAME_MAX];
+		if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
+			perror("Tidak dapat mendapatkan path sekarang ini!");
+			return;
+		}
+
+		if (sub_query != NULL) {
+			if (!strcmp(sub_query, "CREATE")) {
+				sub_query = strtok(NULL, " ");
+				
+				if (sub_query != NULL) {
+					if (!strcmp(sub_query, "DATABASE")) {
+						char database[NAME_MAX];
+						strcpy(database, &user_query[strlen("CREATE DATABASE ")]);
+
+						char path[PATH_MAX];
+						sprintf(path, "%s/%s", current_dir, database);
+
+						struct stat st = {0};
+						if (stat(path, &st) == -1) {
+							mkdir(path, 0777);
+						} else {
+							perror("Database sudah ada!");
+							return;
+						}
+					} else if (!strcmp(sub_query, "USER")) {
+
+					}
+				}
+			}
+		}
+
     char *msg_success = "query accepted\n";
     send(sock, msg_success, strlen(msg_success), 0);
     strcpy(cmd, user_query);
