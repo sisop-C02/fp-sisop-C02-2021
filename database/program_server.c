@@ -388,6 +388,7 @@ bool isExistDB(char *);
 void process_query(int, char *);
 void regis(char *, int, char *, int);
 void permit(char *, int, char *, int);
+bool have_access(char*);
 
 //global variables
 bool isOccupied;
@@ -708,22 +709,15 @@ void permit(char *permis, int sock, char *cmd_per, int buffersize) {
     return;
   }
 
-  int counter = 0;
+  if (have_access(cleanper)) {
+    char *msg_gagal = "multiple_permissions";
+    send(sock, msg_gagal, strlen(msg_gagal), 0);
+    *cmd_per = '\0';
+    return;
+  }
+  
   FILE *fptr;
   fptr = fopen("permit.txt", "a+");
-  while (fscanf(fptr, "%s\n", listofperms[counter]) != EOF)
-    counter++;
-
-  for (int i = 0; i < counter; ++i) {
-    if (!strcmp(listofperms[i], cleanper)) {
-      fclose(fptr);
-      char *msg_gagal = "multiple_permissions";
-      send(sock, msg_gagal, strlen(msg_gagal), 0);
-      *cmd_per = '\0';
-      return;
-    }
-  }
-
   fprintf(fptr, "%s\n", cleanper);
   fclose(fptr);
 
@@ -772,6 +766,23 @@ bool isExistDB(char *db_name) {
 	} else {
   	return true;
 	}
+}
+
+bool have_access(char* user_db) {
+  int counter = 0;
+  FILE *fptr;
+  fptr = fopen("permit.txt", "a+");
+  while (fscanf(fptr, "%s\n", listofperms[counter]) != EOF)
+    counter++;
+
+  for (int i = 0; i < counter; ++i) {
+    if (!strcmp(listofperms[i], user_db)) {
+      fclose(fptr);
+      return true;
+    }
+  }
+  fclose(fptr);
+  return false;
 }
 
 void process_query(int sock, char *user_query) {
