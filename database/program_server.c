@@ -21,8 +21,31 @@ struct Column {
 };
 
 struct Row {
-    struct Column **columns;
+    void **columns;
+	int columnCount;
 };
+
+struct Row *initRow() {
+	struct Row *myRow = malloc(sizeof(struct Row*));
+	myRow->columnCount = 0;
+	myRow->columns = malloc(sizeof(void*));
+	return myRow;
+}
+
+void pushColumn(struct Row *r, void *value) {
+	r->columns = realloc(r->columns, ((r->columnCount) + 2)*sizeof(void*));
+	r->columns[r->columnCount] = value;
+	// printf("Value %p\n", value);
+	// printf("Set to r[%d] %p\n", r->columnCount, r->columns[r->columnCount]);
+	r->columnCount++;
+}
+
+void printRow(struct Row *r) {
+	printf("Printing row\n");
+	for(int i=0; i<r->columnCount; i++) {
+		printf("Column %d referencing to memory %p\n", i, r->columns[i]);
+	}
+}
 
 struct Table {
     struct TableHeader **header;
@@ -30,6 +53,51 @@ struct Table {
     int rowCount;
     int columnCount;
 };
+
+void printTable(struct Table *t) {
+	for(int i=0; i<t->rowCount; i++) {
+		printf("Printing row %d\n", i);
+		struct Row *row = t->row[i];
+		for(int j=0; j<t->columnCount; j++) {
+			printf("Printing column %d\n", j);
+			if(t->header[j]->type == 0) {
+				// integer
+				printf("%d\n", *(int*) row->columns[j]);
+			} else {
+				// string
+				printf("%s\n", (char*) row->columns[j]);
+			}
+		}
+	}
+}
+
+char *tableToString(struct Table *t) {
+	char *temp = malloc(sizeof(char*));
+	for(int i=0; i<t->columnCount; i++) {
+		strcat(temp, t->header[i]->name);
+		if(t->header[i]->type == 0) {
+			strcat(temp, "i");
+		} else {
+			strcat(temp, "s");
+		}
+		strcat(temp, ";");
+	}
+	strcat(temp, "\n");
+	for(int i=0; i<t->rowCount; i++) {
+		struct Row *r = t->row[i];
+		for(int j=0; j<t->columnCount; j++) {
+			if(t->header[j]->type == 0) {
+				sprintf(temp, "%s%d;", temp, *(int*) r->columns[j]);
+			} else {
+				strcat(temp, r->columns[j]);
+				strcat(temp, ";");
+			}
+		}
+		strcat(temp, "\n");
+	}
+	printf("%s", temp);
+	return temp;
+}
 
 int* getTableKeys(char **columns) {
 
@@ -48,6 +116,7 @@ struct Row *parseRow(struct Table *ta, struct Row *r, char *row) {
     int type = ta->header[0]->type;
     int columnAt = 0;
     char *temp = malloc(sizeof(char)*strlen(row));
+	printf("Parsing row %s\n", row);
     for(int i=0; i<len; i++) {
         if(row[i] == '"' && lookForQuote) {
             lookForQuote = 0;
@@ -58,28 +127,31 @@ struct Row *parseRow(struct Table *ta, struct Row *r, char *row) {
         }
         
         if(row[i] == ';' && lookForDelimiter && lookForQuote == 0) {
-            struct Column *column = malloc(sizeof(struct Column*));
-            
-            r->columns = malloc(sizeof(struct Column*)*strlen(row));
-            printf("%s\n", temp);
+            // printf("%s\n", temp);
             if(type == 0) {
-                printf("Masuk int\n");
-                int intVal = atoi(temp);
-                int *ptr = &intVal;
-                column->value = ptr;
-                r->columns[columnAt++] = column;
+				printf("Int parsed\n");
+				int *intPtr = malloc(2*sizeof(int));
+				*intPtr = atoi(temp);
+				void *ptrVoid = intPtr;
+				pushColumn(r, ptrVoid);
             } else {
-                printf("Masuk str\n");
-                column->value = temp;
-                r->columns[columnAt++] = column;
+				char *tempCopy = malloc(sizeof(char*)*strlen(temp));
+				strcpy(tempCopy, temp);
+				void *ptrVoid = tempCopy;
+                pushColumn(r, ptrVoid);
             }
-            type = ta->header[columnAt]->type;
+			columnAt++;
+            struct TableHeader *header = ta->header[columnAt];
+			if(columnAt < ta->columnCount) {
+				type = header->type;
+			}
             temp[0] = '\0'; // cut substring
         } else {
             // push to buffer
             strncat(temp, &row[i], 1);
         }
     }
+	printf("%d\n", columnAt);
 }
 
 struct Row *getRowByIndex(struct Table *table, int index) {
@@ -92,6 +164,7 @@ int loadFromFile(struct Table *ta, char *file) {
     char *delim = "'\n'";
     char *split, *endToken;
     split = strtok_r(file, delim, &endToken);
+	ta->row = malloc(sizeof(struct Row*)*100);
     while (split != NULL) {
         if(isHeader == 1) {
             int columnCount = 0;
@@ -126,11 +199,12 @@ int loadFromFile(struct Table *ta, char *file) {
             ta->columnCount = columnCount;
             isHeader = 0;
         } else {
-            struct Row *r = malloc(sizeof(struct Row*));
-            r->columns = malloc(sizeof(struct Column*)*ta->columnCount*10);
+			struct Row *r = initRow();
+			printf("Parsing row %d to %d\n", ta->rowCount, r);
             parseRow(ta, r, split);
-            ta->row = malloc(sizeof(struct Row*)*100);
             // printf("%d\n", *((int*) r->columns[0]->value));
+			printf("Pushing row %d with values:\n", ta->rowCount);
+			printRow(r);
             ta->row[ta->rowCount] = r;
             ta->rowCount++;
         }
@@ -142,7 +216,7 @@ int loadFromFile(struct Table *ta, char *file) {
     void *ptr = ta->row[0]->columns[0];
     printf("Column count %d\n", ta->columnCount);
     printf("Row count %d\n", ta->rowCount);
-    printf("%s\n", file);
+    printf("%d\n", ptr);
 }
 
 struct DatabaseServer {
@@ -186,6 +260,14 @@ client curr_client;
 
 int main(int argc , char *argv[])
 {
+	struct Table myTable = {};
+    char buffer[100];
+    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n1;3;Aji;");
+    loadFromFile(&myTable, buffer);
+	printTable(&myTable);
+	tableToString(&myTable);
+
+	return 0;
 	int socket_desc , client_sock , c , *new_sock;
 	struct sockaddr_in server , client;
 	
