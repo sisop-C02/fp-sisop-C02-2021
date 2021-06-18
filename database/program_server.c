@@ -21,8 +21,31 @@ struct Column {
 };
 
 struct Row {
-    struct Column **columns;
+    void **columns;
+	int columnCount;
 };
+
+struct Row *initRow() {
+	struct Row *myRow = malloc(sizeof(struct Row*));
+	myRow->columnCount = 0;
+	myRow->columns = malloc(sizeof(void*));
+	return myRow;
+}
+
+void pushColumn(struct Row *r, void *value) {
+	r->columns = realloc(r->columns, ((r->columnCount) + 2)*sizeof(void*));
+	r->columns[r->columnCount] = value;
+	// printf("Value %p\n", value);
+	// printf("Set to r[%d] %p\n", r->columnCount, r->columns[r->columnCount]);
+	r->columnCount++;
+}
+
+void printRow(struct Row *r) {
+	printf("Printing row\n");
+	for(int i=0; i<r->columnCount; i++) {
+		printf("Column %d referencing to memory %p\n", i, r->columns[i]);
+	}
+}
 
 struct Table {
     struct TableHeader **header;
@@ -30,6 +53,51 @@ struct Table {
     int rowCount;
     int columnCount;
 };
+
+void printTable(struct Table *t) {
+	for(int i=0; i<t->rowCount; i++) {
+		printf("Printing row %d\n", i);
+		struct Row *row = t->row[i];
+		for(int j=0; j<t->columnCount; j++) {
+			printf("Printing column %d\n", j);
+			if(t->header[j]->type == 0) {
+				// integer
+				printf("%d\n", *(int*) row->columns[j]);
+			} else {
+				// string
+				printf("%s\n", (char*) row->columns[j]);
+			}
+		}
+	}
+}
+
+char *tableToString(struct Table *t) {
+	char *temp = malloc(sizeof(char*));
+	for(int i=0; i<t->columnCount; i++) {
+		strcat(temp, t->header[i]->name);
+		if(t->header[i]->type == 0) {
+			strcat(temp, "i");
+		} else {
+			strcat(temp, "s");
+		}
+		strcat(temp, ";");
+	}
+	strcat(temp, "\n");
+	for(int i=0; i<t->rowCount; i++) {
+		struct Row *r = t->row[i];
+		for(int j=0; j<t->columnCount; j++) {
+			if(t->header[j]->type == 0) {
+				sprintf(temp, "%s%d;", temp, *(int*) r->columns[j]);
+			} else {
+				strcat(temp, r->columns[j]);
+				strcat(temp, ";");
+			}
+		}
+		strcat(temp, "\n");
+	}
+	printf("%s", temp);
+	return temp;
+}
 
 int* getTableKeys(char **columns) {
 
@@ -48,6 +116,7 @@ struct Row *parseRow(struct Table *ta, struct Row *r, char *row) {
     int type = ta->header[0]->type;
     int columnAt = 0;
     char *temp = malloc(sizeof(char)*strlen(row));
+	printf("Parsing row %s\n", row);
     for(int i=0; i<len; i++) {
         if(row[i] == '"' && lookForQuote) {
             lookForQuote = 0;
@@ -58,28 +127,31 @@ struct Row *parseRow(struct Table *ta, struct Row *r, char *row) {
         }
         
         if(row[i] == ';' && lookForDelimiter && lookForQuote == 0) {
-            struct Column *column = malloc(sizeof(struct Column*));
-            
-            r->columns = malloc(sizeof(struct Column*)*strlen(row));
-            printf("%s\n", temp);
+            // printf("%s\n", temp);
             if(type == 0) {
-                printf("Masuk int\n");
-                int intVal = atoi(temp);
-                int *ptr = &intVal;
-                column->value = ptr;
-                r->columns[columnAt++] = column;
+				printf("Int parsed\n");
+				int *intPtr = malloc(2*sizeof(int));
+				*intPtr = atoi(temp);
+				void *ptrVoid = intPtr;
+				pushColumn(r, ptrVoid);
             } else {
-                printf("Masuk str\n");
-                column->value = temp;
-                r->columns[columnAt++] = column;
+				char *tempCopy = malloc(sizeof(char*)*strlen(temp));
+				strcpy(tempCopy, temp);
+				void *ptrVoid = tempCopy;
+                pushColumn(r, ptrVoid);
             }
-            type = ta->header[columnAt]->type;
+			columnAt++;
+            struct TableHeader *header = ta->header[columnAt];
+			if(columnAt < ta->columnCount) {
+				type = header->type;
+			}
             temp[0] = '\0'; // cut substring
         } else {
             // push to buffer
             strncat(temp, &row[i], 1);
         }
     }
+	printf("%d\n", columnAt);
 }
 
 struct Row *getRowByIndex(struct Table *table, int index) {
@@ -92,6 +164,7 @@ int loadFromFile(struct Table *ta, char *file) {
     char *delim = "'\n'";
     char *split, *endToken;
     split = strtok_r(file, delim, &endToken);
+	ta->row = malloc(sizeof(struct Row*)*100);
     while (split != NULL) {
         if(isHeader == 1) {
             int columnCount = 0;
@@ -126,25 +199,151 @@ int loadFromFile(struct Table *ta, char *file) {
             ta->columnCount = columnCount;
             isHeader = 0;
         } else {
-            struct Row *r = malloc(sizeof(struct Row*));
-            r->columns = malloc(sizeof(struct Column*)*ta->columnCount*10);
+			struct Row *r = initRow();
             parseRow(ta, r, split);
-            ta->row = malloc(sizeof(struct Row*)*100);
-            // printf("%d\n", *((int*) r->columns[0]->value));
+			printRow(r);
             ta->row[ta->rowCount] = r;
             ta->rowCount++;
         }
         split = strtok_r(NULL, delim, &endToken);
     }
-    for(int i=0;i<ta->columnCount;i++) {
-        printf("Header %d %s %d\n", i, ta->header[i]->name, ta->header[i]->type);
-    }
     void *ptr = ta->row[0]->columns[0];
-    printf("Column count %d\n", ta->columnCount);
-    printf("Row count %d\n", ta->rowCount);
-    printf("%s\n", file);
 }
 
+void handleQuery(char *query) {
+	
+}
+
+void insertRow(struct Table *t, char *query) {
+	struct Row *r = initRow();
+	int startParse = 0;
+	int newData = 0;
+	int parseString = 0;
+	char *temp = malloc(sizeof(char*)*strlen(query));
+	for(int i=0; i<strlen(query); i++) {
+		if(query[i] == '(') {
+			startParse = 1;
+			newData = 1;
+			continue;
+		}
+
+		// parse
+		if(startParse == 1) {
+			if(newData == 1) {
+				if(query[i] == '\'') {
+					newData = 0;
+					parseString = 1;
+				} else {
+					newData = 0;
+					parseString = 0;
+					sprintf(temp, "%s%c", temp, query[i]);
+				}
+			} else {
+				// integer stop when met ,
+				// string stop when met '
+				if(parseString == 0) {
+					//its integer bro
+					if(query[i] == ',') {
+						newData = 1;
+						int *intPtr = malloc(2*sizeof(int));
+						*intPtr = atoi(temp);
+						void *ptrVoid = intPtr;
+						pushColumn(r, ptrVoid);
+						temp[0] = '\0';
+						continue;
+					}
+				} else {
+					//its string
+					if(query[i] == '\'') {
+						i++;
+						newData = 1;
+						pushColumn(r, strdup(temp));
+						temp[0] = '\0';
+					}
+				}
+
+				sprintf(temp, "%s%c", temp, query[i]);
+			}
+			if(query[i] == ')') {
+				break;
+			}
+		}
+	}
+	t->row[t->rowCount] = r;
+	t->rowCount++;
+}
+
+void updateSingleRow(struct Row *r, int type, int columnNumber, char *stringVal, int intVal) {
+	if(type == 0) {
+		int *intPtr = malloc(sizeof(int));
+		*intPtr = intVal;
+		printf("%d\n", *intPtr);
+		void *voidPtr = intPtr;
+		r->columns[columnNumber] = voidPtr; 
+	} else {
+		r->columns[columnNumber] = stringVal; 
+	}
+}
+
+void updateRow(struct Table *t, char *query) {
+	char *columnName = malloc(sizeof(char*)*strlen(query));
+	char *splitTemp = malloc(sizeof(char*)*strlen(query));
+	char *value = malloc(sizeof(char*)*strlen(query));
+	int setter = 0;
+	int columnParse = 0;
+	for(int i=0; i<strlen(query); i++) {
+		if(strcmp(splitTemp, "SET") == 0) {
+			setter = 1;
+			columnParse = 1;
+		}
+		if(query[i] == ' ') {
+			splitTemp[0] = '\0';
+			continue;
+		}
+		if(setter == 1) {
+			if(query[i] == '=') {
+				columnParse = 0;
+				continue;
+			}
+			if(columnParse == 1) {
+				sprintf(columnName, "%s%c", columnName, query[i]);
+			} else {
+				if(query[i] == '\'') continue;
+				sprintf(value, "%s%c", value, query[i]);
+			}
+		}
+		sprintf(splitTemp, "%s%c", splitTemp, query[i]);
+	}
+	int type = -1;
+	int columnNumber = -1;
+	for(int i=0;i<t->columnCount;i++) {
+		struct TableHeader *h = t->header[i];
+		if(strcmp(h->name, columnName) == 0) {
+			columnNumber = i;
+			type = h->type;
+			break;
+		}
+	}
+
+	for(int i=0; i<t->rowCount; i++) {
+		struct Row *r = t->row[i];
+		if(type == 0) {
+			// update int
+			updateSingleRow(r, type, columnNumber, "", atoi(value));
+		} else {
+			// update string
+			updateSingleRow(r, type, columnNumber, (value), 0);
+		}
+	}
+}
+
+void selectTable(struct Table *t, char *query) {
+	
+}
+void clearTable(struct Table *t) {
+	t->rowCount = 0;
+	t->row = malloc(sizeof(struct Row*));
+}
 struct DatabaseServer {
 
 };
@@ -171,21 +370,34 @@ void *connection_handler(void *);
 bool login(char*, int); 
 void get_client(char*);
 bool regis(char*, int);
+bool isExistUser(char*);
+bool isExistDB(char*);
 
 //query functions
 void process_query(int, char*);
+void permit(char*, int);
 
 //global variables
 bool isOccupied;
 char listofcreds[100][50];
 char listofperms[100][50];
-char server_path[250] = "/home/jaglfr/Documents/SourceCodes/SisOp/fp/fp-sisop-C02-2021/database";
-char client_path[250] = "/home/jaglfr/Documents/SourceCodes/SisOp/fp/fp-sisop-C02-2021/client";
 client curr_client;
 
 
 int main(int argc , char *argv[])
 {
+	struct Table myTable = {};
+    char buffer[100];
+    strcpy(buffer, "idi;agei;names;\n1;12;Budi;\n2;3;Aji;");
+    loadFromFile(&myTable, buffer);
+	printTable(&myTable);
+	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+	updateRow(&myTable, "UPDATE table1 SET name='Agung'");
+	clearTable(&myTable);
+	insertRow(&myTable, "INSERT INTO A (3,10,'Hendi');");
+	tableToString(&myTable);
+
+	return 0;
 	int socket_desc , client_sock , c , *new_sock;
 	struct sockaddr_in server , client;
 	
@@ -258,6 +470,7 @@ void *connection_handler(void *socket_desc)
 		// Client exits with "EXIT"
 		if (client_exit){
 			client_exit = false;
+			puts("[client exit]\n");
 			close(sock); free(socket_desc);
 			isOccupied = false;
 			return 0;
@@ -270,12 +483,18 @@ void *connection_handler(void *socket_desc)
 			if(client_message[0] == 'l' || client_message[0] == 's') {
 				strcpy(credentials, client_message);
 				incorrect = false;
+			} else if (!strcmp(client_message, "exit")) {
+				client_exit = true;
+				break;
 			}
 			memset(client_message,0,2000);
 		}
+		if (client_exit) continue;
 
 		if (credentials[0] == 's') {
 			status = true;
+			strcpy(curr_client.username, "sudo");
+			strcpy(curr_client.password, "sudo");
 		} else if (credentials[0] == 'l'){
 			status = login(credentials, sock);
 		}
@@ -284,6 +503,7 @@ void *connection_handler(void *socket_desc)
 		} 
 		else {
 			puts("[client logged in]");
+			printf("Current client -> %s:%s\n",curr_client.username, curr_client.password);
 			// Setelah login
 			while(true) 
 			{
@@ -340,6 +560,7 @@ bool login(char credentials[], int sock) {
     }
     char *msg_gagal = "login_failed";
     send(sock , msg_gagal , strlen(msg_gagal), 0);
+    puts("[invalid user]");
     return false;
 }
 
@@ -374,34 +595,59 @@ bool regis(char credentials[], int sock) {
 	for (int i = 0; i < colon_idx; ++i)
 		usr_name[i] = cleancreds[i];
 
-	int counter = 0;
-	FILE *fptr;
-    fptr = fopen("akun.txt", "a+");
-    while(fscanf(fptr, "%s\n", listofcreds[counter]) != EOF)
-    	counter++;
-    
-    // Cek apakah sudah ada username
-    for (int i = 0; i < counter; ++i) {
-    	if (strstr(listofcreds[i], usr_name) != NULL) {
-    		fclose(fptr);
-    		char *msg_gagal = "regis_failed";
-    		send(sock , msg_gagal , strlen(msg_gagal), 0);
-    		return false;
-    	}
-    }
+	bool userexist = isExistUser(usr_name);
 
-    fprintf(fptr, "%s\n", cleancreds);
-    fclose(fptr);
-    char *msg_success = "regis_success";
-    send(sock , msg_success , strlen(msg_success), 0);
-    return true;
+	if (userexist) {
+		char *msg_gagal = "regis_failed";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    puts("[invalid regis]");
+	    return false;
+	} else {
+		FILE *fptr;
+	    fptr = fopen("akun.txt", "a+");
+	    fprintf(fptr, "%s\n", cleancreds);
+	    fclose(fptr);
+	    char *msg_success = "regis_success";
+	    send(sock , msg_success , strlen(msg_success), 0);
+	    puts("[user registered]");
+    	return true;
+	}
 }
 
 void permit(char* permis, int sock) {
 	// menghapus huruf p
+	char usr_name[50] = {0}, db_name[50] = {0}; 
+	int colon_idx = 0;
 	char cleanper[50]; memset(cleanper,0,sizeof(cleanper));
-	for (int i = 1; i < strlen(permis); ++i)
+	for (int i = 1; i < strlen(permis); ++i){
 		cleanper[i-1] = permis[i];
+		if (permis[i] == ':')
+			colon_idx = i-1;
+	}
+
+	// parse user
+	int rep = 0;
+	for (int i = colon_idx+1; i < strlen(cleanper); ++i){
+		usr_name[rep] = cleanper[i];
+		rep++;
+	}
+	// parse database
+	for (int i = 0; i < colon_idx; ++i)
+		db_name[i] = cleanper[i];
+	
+	bool userexist = isExistUser(usr_name);
+	if (!userexist) {
+		char *msg_gagal = "user_unavailable";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    return;
+	}
+
+	bool DBexist = isExistDB(db_name);
+	if (!userexist) {
+		char *msg_gagal = "database_unavailable";
+	    send(sock , msg_gagal , strlen(msg_gagal), 0);
+	    return;
+	}
 
 	int counter = 0;
 	FILE *fptr;
@@ -412,7 +658,7 @@ void permit(char* permis, int sock) {
     for (int i = 0; i < counter; ++i) {
     	if (!strcmp(listofperms[i], cleanper)) {
     		fclose(fptr);
-    		char *msg_gagal = "permission_failed";
+    		char *msg_gagal = "multiple_permissions";
     		send(sock , msg_gagal , strlen(msg_gagal), 0);
     		return;
     	}
@@ -423,6 +669,31 @@ void permit(char* permis, int sock) {
     char *msg_success = "permission_success";
     send(sock , msg_success , strlen(msg_success), 0);
 }
+
+
+bool isExistUser(char* usr_name) {
+	int counter = 0;
+	FILE *fptr;
+    fptr = fopen("akun.txt", "a+");
+    while(fscanf(fptr, "%s\n", listofcreds[counter]) != EOF)
+    	counter++;
+    
+    // Cek apakah sudah ada username
+    for (int i = 0; i < counter; ++i) {
+    	if (strstr(listofcreds[i], usr_name) != NULL) {
+    		fclose(fptr);
+    		return true;
+    	}
+    }
+    fclose(fptr);
+    return false;
+}
+
+bool isExistDB(char* db_name) {
+	
+    return true;
+}
+
 
 void process_query(int sock, char* user_query) {
 	//Query
@@ -437,6 +708,11 @@ void process_query(int sock, char* user_query) {
 	else if (user_query[0]=='p')
  	{
 		permit(user_query, sock);
+	}
+	else {
+		printf("%s\n", user_query);
+		char *msg_success = "query accepted\n";
+    	send(sock , msg_success , strlen(msg_success), 0);
 	}
 	return;
 }
